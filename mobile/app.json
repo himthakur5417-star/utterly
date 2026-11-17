@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Utterly",
+    "slug": "utterly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "utterly",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.utterly.app"
+    },
+    "android": {
+      "package": "com.utterly.app",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
