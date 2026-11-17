@@ -1,0 +1,297 @@
+// ── Utterly – Prisma schema ──────────────────────────────────────────
+// Local development uses SQLite. For production switch the datasource
+// provider to "postgresql" and set DATABASE_URL accordingly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum BusinessType {
+  FREELANCER
+  SOLO
+  SMALL_BUSINESS
+  AGENCY
+  SERVICE_PROVIDER
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+  OTHER
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum Tone {
+  POLITE
+  PROFESSIONAL
+  FRIENDLY
+  FIRM
+}
+
+enum RecallBucket {
+  UPCOMING // not yet due
+  EARLY // 1-7 days overdue
+  LATE // 8-30 days
+  SEVERE // 31-60 days
+  CRITICAL // 60+ days
+}
+
+enum EmailStatus {
+  PREVIEW
+  SENT
+  DELIVERED
+  OPENED
+  BOUNCED
+  FAILED
+  SIMULATED
+}
+
+enum PlanTier {
+  STARTER
+  PROFESSIONAL
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+// ── Models ────────────────────────────────────────────────────────────
+
+model User {
+  id                String       @id @default(cuid())
+  email             String       @unique
+  name              String
+  passwordHash      String
+  role              UserRole     @default(USER)
+  status            UserStatus   @default(ACTIVE)
+  businessName      String?
+  businessType      BusinessType?
+  currency          String       @default("USD")
+  paymentPreference String?
+  stripeCustomerId  String?      @unique
+  plan              PlanTier     @default(PROFESSIONAL)
+  isDemoUser        Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  clients        Client[]
+  invoices       Invoice[]
+  payments       Payment[]
+  reminders      Reminder[]
+  emailLogs      EmailLog[]
+  automation     AutomationSetting?
+  subscription   Subscription?
+  auditLogs      AuditLog[]
+}
+
+model Client {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String // business name
+  contactName   String?
+  email         String?
+  phone         String?
+  billingAddress String?
+  notes         String?
+  tags          String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  invoices  Invoice[]
+  payments  Payment[]
+
+  @@index([userId])
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  userId          String
+  clientId        String
+  number          String
+  issueDate       DateTime
+  dueDate         DateTime
+  status          InvoiceStatus @default(DRAFT)
+  subject         String?
+  discountPercent Float         @default(0)
+  taxPercent      Float         @default(0)
+  totalAmount     Float
+  amountPaid      Float         @default(0)
+  currency        String        @default("USD")
+  memo            String?
+  sharedLinkToken String?       @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id])
+  client    Client      @relation(fields: [clientId], references: [id])
+  items     InvoiceItem[]
+  payments  Payment[]
+  reminders Reminder[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id        String @id @default(cuid())
+  invoiceId String
+  description String
+  quantity  Float  @default(1)
+  unitPrice Float
+  amount    Float
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  userId       String
+  invoiceId    String
+  clientId     String
+  amount       Float
+  method       PaymentMethod  @default(OTHER)
+  status       PaymentStatus  @default(PENDING)
+  transactionRef String?      @unique
+  paidAt       DateTime?
+  createdAt    DateTime       @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  client  Client  @relation(fields: [clientId], references: [id])
+
+  @@index([userId])
+  @@index([invoiceId])
+}
+
+model Reminder {
+  id               String        @id @default(cuid())
+  userId           String
+  invoiceId        String
+  bucket           RecallBucket
+  tone            Tone
+  subject          String
+  body             String
+  scheduledAt      DateTime
+  sentAt           DateTime?
+  status           EmailStatus   @default(PREVIEW)
+  recommendedNextDate DateTime?
+  strategy         String?
+  createdAt        DateTime       @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model EmailLog {
+  id         String       @id @default(cuid())
+  userId     String
+  invoiceId  String?
+  reminderId String?
+  clientId   String?
+  to         String
+  subject    String
+  body       String
+  status     EmailStatus
+  provider   String
+  externalId String?
+  error      String?
+  createdAt  DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model AutomationSetting {
+  id            String @id @default(cuid())
+  userId        String @unique
+  enabled       Boolean @default(true)
+  beforeDueDays Int    @default(2)
+  remindOnDue   Boolean @default(true)
+  followUp3     Boolean @default(true)
+  followUp7     Boolean @default(true)
+  followUp15    Boolean @default(true)
+  escalate30    Boolean @default(true)
+  defaultTone   Tone   @default(PROFESSIONAL)
+  templates     String? // JSON override of email templates
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Subscription {
+  id                  String             @id @default(cuid())
+  userId              String             @unique
+  tier                PlanTier
+  status              SubscriptionStatus  @default(ACTIVE)
+  priceAmount         Float
+  currency            String             @default("USD")
+  currentPeriodEnd    DateTime?
+  stripeSubscriptionId String?            @unique
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  userId    String?
+  actor     String
+  action    String
+  entity    String?
+  entityId  String?
+  meta      String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
